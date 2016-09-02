@@ -10,28 +10,59 @@
     }
 }(this, function () {
     "use strict";
+
+    // Slightly dubious tricks to cut down minimized file size
     var noop = function() {};
     var undefinedType = "undefined";
+    var colors = [
+        'lightseagreen',
+        'forestgreen',
+        'goldenrod',
+        'dodgerblue',
+        'darkorchid',
+        'chocolate',
+        'deeppink',
+        'violet',
+        'darkcyan',
+        'limegreen'
+    ];
 
-    function realMethod(methodName) {
+    // Build the best logging method possible for this env
+    // Wherever possible we want to bind, not wrap, to preserve stack traces
+    function realMethod(methodName, loggerName) {
         if (typeof console === undefinedType) {
-            return false; // We can't build a real method without a console to log to
+            return false; // No method possible, for now - fixed later by enableLoggingWhenConsoleArrives
         } else if (console[methodName] !== undefined) {
-            return bindMethod(console, methodName);
+            return bindMethod(console, methodName, loggerName);
         } else if (console.log !== undefined) {
-            return bindMethod(console, 'log');
+            return bindMethod(console, 'log', loggerName);
         } else {
             return noop;
         }
     }
 
-    function bindMethod(obj, methodName) {
+    // Cross-browser bind equivalent that works at least back to IE6
+    function bindMethod(obj, methodName, loggerName) {
         var method = obj[methodName];
+
+          var out = 0;
+        if (loggerName) {
+            var len = loggerName.length;
+            for (var pos = 0; pos < len; pos++) {
+                out += loggerName.charCodeAt(pos);
+            }
+        }
+
+        var prefix = "%c["+loggerName+"]%c ";
+        var color = "color:"+colors[c]+";";
+        var inheritColor = "color:inherit;"
+        var msie = /Edge\/|Trident\/|MSIE /.test(window.navigator.userAgent);
+
         if (typeof method.bind === 'function') {
-            return method.bind(obj);
+            return msie ? method.bind(obj) : method.bind(obj, prefix, color, inheritColor);
         } else {
             try {
-                return Function.prototype.bind.call(method, obj);
+                return msie ? Function.prototype.bind.call(method, obj) : Function.prototype.bind.call(method, obj, prefix, color, inheritColor);
             } catch (e) {
                 // Missing bind shim or IE8 + Modernizr, fallback to wrapping
                 return function() {
@@ -41,8 +72,10 @@
         }
     }
 
-    // these private functions always need `this` to be set properly
+    // These private functions always need `this` to be set properly
 
+    // In old IE versions, the console isn't present until you first open it.
+    // We build realMethod() replacements here that regenerate logging methods
     function enableLoggingWhenConsoleArrives(methodName, level, loggerName) {
         return function () {
             if (typeof console !== undefinedType) {
@@ -62,9 +95,11 @@
         }
     }
 
+    // By default, we use closely bound real methods wherever possible, and 
+    // otherwise we wait for a console to appear, and then try again.
     function defaultMethodFactory(methodName, level, loggerName) {
         /*jshint validthis:true */
-        return realMethod(methodName) ||
+        return realMethod(methodName, loggerName) ||
                enableLoggingWhenConsoleArrives.apply(this, arguments);
     }
 
@@ -107,6 +142,7 @@
               storedLevel = window.localStorage[storageKey];
           } catch (ignore) {}
 
+          // Fallback to cookies if local storage gives us nothing
           if (typeof storedLevel === undefinedType) {
               try {
                   var cookie = window.document.cookie;
@@ -128,7 +164,7 @@
 
       /*
        *
-       * Public API
+       * Public logger API - see https://github.com/pimterry/loglevel for details
        *
        */
 
@@ -183,7 +219,7 @@
 
     /*
      *
-     * Package-level API
+     * Top-level API
      *
      */
 
